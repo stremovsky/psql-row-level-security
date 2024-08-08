@@ -16,3 +16,4 @@ CREATE POLICY tenant_policy ON data_table
 CREATE USER rds_iam_user WITH LOGIN;
 GRANT rds_iam TO rds_iam_user;
 GRANT CONNECT ON DATABASE tenantdb TO rds_iam_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON data_table TO rds_iam_user;
