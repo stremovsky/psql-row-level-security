@@ -53,4 +53,4 @@ psql 'postgresql://dbadmin:adminpassword@localhost:5432/tenantdb' -f setup-db.sq
 kill $pid
 
 echo "Terminating temp EC2 instance"
-#aws ec2 terminate-instances --instance-ids $INSTANCE_ID
+aws ec2 terminate-instances --instance-ids $INSTANCE_ID
