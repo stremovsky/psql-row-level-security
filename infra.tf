@@ -10,8 +10,10 @@ resource "aws_db_instance" "postgres" {
   publicly_accessible     = false
   apply_immediately       = true
   iam_database_authentication_enabled = true
+}
 
-  vpc_security_group_ids = [aws_security_group.postgres_sg.id]
+data "aws_db_subnet_group" "example" {
+  name = aws_db_instance.postgres.db_subnet_group_name
 }
 
 resource "aws_security_group" "postgres_sg" {
@@ -73,6 +75,21 @@ resource "aws_iam_role_policy" "lambda_policy" {
   })
 }
 
+resource "aws_security_group" "lambda_sg" {
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
 resource "aws_lambda_function" "fetch_records" {
   filename         = ".files/lambda_function.zip"
   source_code_hash = filebase64sha256(".files/lambda_function.zip")
@@ -80,6 +97,7 @@ resource "aws_lambda_function" "fetch_records" {
   role             = aws_iam_role.lambda_role.arn
   handler          = "lambda_function.lambda_handler"
   runtime          = "python3.10"
+  timeout          = 10
   environment {
     variables = {
       DB_HOST     = aws_db_instance.postgres.endpoint
@@ -87,6 +105,10 @@ resource "aws_lambda_function" "fetch_records" {
       DB_USER     = "rds_iam_user"
       REGION      = var.region
     }
+  }
+  vpc_config {
+    subnet_ids          = data.aws_db_subnet_group.example.subnet_ids
+    security_group_ids  = [aws_security_group.lambda_sg.id]
   }
 }
 
