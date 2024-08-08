@@ -3,8 +3,7 @@ import boto3
 import psycopg2
 import psycopg2.extras
 import json
-import jwt
-
+import base64
 
 def lambda_handler(event, context):
     token = event['headers']['Authorization']
