@@ -11,7 +11,7 @@ fi
 USER_POOL_CLIENT_ID=$(terraform output -raw user_pool_client_id)
 URL=$(terraform output -raw invoke_url)
 
-USERNAME="user2"
+USERNAME="user1"
 PASSWORD="1qaz@WSX"
 
 # Authenticate the user and get tokens
