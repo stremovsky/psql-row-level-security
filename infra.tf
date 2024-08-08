@@ -75,6 +75,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
 
 resource "aws_lambda_function" "fetch_records" {
   filename         = ".files/lambda_function.zip"
+  source_code_hash = filebase64sha256(".files/lambda_function.zip")
   function_name    = "fetchRecords"
   role             = aws_iam_role.lambda_role.arn
   handler          = "lambda_function.lambda_handler"
