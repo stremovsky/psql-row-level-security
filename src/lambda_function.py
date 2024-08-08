@@ -30,6 +30,7 @@ def parse_jwt(token):
     return payload_json
 
 def lambda_handler(event, context):
+    db_host = remove_port(os.getenv('DB_HOST'))
     tenant_id = 1
     if 'headers' in event and event['headers'] is not None and 'Authorization' in event['headers']:
         token = event['headers']['Authorization']
@@ -38,7 +39,7 @@ def lambda_handler(event, context):
 
     client = boto3.client('rds')
     auth_token = client.generate_db_auth_token(
-        DBHostname=remove_port(os.getenv('DB_HOST')),
+        DBHostname=db_host,
         Port=5432,
         DBUsername=os.getenv('DB_USER'),
         Region=os.getenv('REGION')
@@ -48,7 +49,7 @@ def lambda_handler(event, context):
         dbname=os.getenv('DB_NAME'),
         user=os.getenv('DB_USER'),
         password=auth_token,
-        host=os.getenv('DB_HOST'),
+        host=db_host,
         sslmode='require'
     )
     cur = conn.cursor()
