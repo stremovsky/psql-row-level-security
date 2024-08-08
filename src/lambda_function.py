@@ -44,6 +44,11 @@ def lambda_handler(event, context):
         DBUsername=os.getenv('DB_USER'),
         Region=os.getenv('REGION')
     )
+    #if auth_token is not None:
+    #    return {
+    #        'statusCode': 200,
+    #        'body': auth_token
+    #   }
 
     conn = psycopg2.connect(
         dbname=os.getenv('DB_NAME'),
@@ -54,10 +59,10 @@ def lambda_handler(event, context):
     )
     cur = conn.cursor()
     cur.execute("SET app.current_tenant TO %s", (tenant_id,))
-    cur.execute("SELECT * FROM your_table_name;")
-    records = cursor.fetchall()
+    cur.execute("SELECT * FROM data_table")
+    records = cur.fetchall()
     
     return {
         'statusCode': 200,
-        'body': json.dumps([dict(record) for record in records])
+        'body': json.dumps(records)
     }
