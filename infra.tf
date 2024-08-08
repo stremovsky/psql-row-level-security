@@ -37,11 +37,25 @@ data "aws_db_subnet_group" "example" {
 
 resource "aws_cognito_user_pool" "user_pool" {
   name = "user-pool"
+  schema {
+    attribute_data_type = "String"
+    name                = "tenant_id"
+    required            = false
+    mutable             = true
+  }
 }
 
 resource "aws_cognito_user_pool_client" "user_pool_client" {
   name         = "user-pool-client"
   user_pool_id = aws_cognito_user_pool.user_pool.id
+  explicit_auth_flows = [
+    "ALLOW_USER_PASSWORD_AUTH",
+    "ALLOW_REFRESH_TOKEN_AUTH",
+    "ALLOW_USER_SRP_AUTH",
+  ]
+
+  # Prevent the client from having a secret
+  generate_secret = false
 }
 
 resource "aws_iam_role" "lambda_role" {
@@ -58,6 +72,25 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
+resource "aws_iam_role_policy" "lambda_policy" {
+  role = aws_iam_role.lambda_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "rds-db:connect"
+        ]
+        Effect   = "Allow"
+        Resource = [
+          "arn:aws:rds-db:${var.region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.postgres.identifier}/rds_iam_user",
+          "arn:aws:rds-db:*:*:dbuser:*/*"
+        ]
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy_attachment" "lambda_policy" {
   role       = aws_iam_role.lambda_role.name
   policy_arn  = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
@@ -71,24 +104,6 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc_policy" {
 resource "aws_iam_role_policy_attachment" "lambda_rds_access" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonRDSDataFullAccess"
-}
-
-resource "aws_iam_role_policy" "lambda_policy" {
-  role = aws_iam_role.lambda_role.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = [
-          "rds-db:connect"
-        ]
-        Effect   = "Allow"
-        Resource = [
-          "arn:aws:rds-db:${var.region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.postgres.db_name}/rds_iam_user"
-        ]
-      }
-    ]
-  })
 }
 
 resource "aws_security_group" "lambda_sg" {
@@ -134,4 +149,52 @@ resource "aws_lambda_permission" "allow_cognito_invoke" {
   function_name = aws_lambda_function.fetch_records.function_name
   principal     = "cognito-idp.amazonaws.com"
   source_arn    = aws_cognito_user_pool.user_pool.arn
+}
+
+resource "aws_lambda_function_event_invoke_config" "invoke_config" {
+  function_name = aws_lambda_function.fetch_records.function_name
+  maximum_retry_attempts = 0
+  maximum_event_age_in_seconds = 60
+}
+
+resource "aws_lambda_permission" "allow_invoke" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.fetch_records.function_name
+  principal     = "apigateway.amazonaws.com"
+}
+
+resource "aws_api_gateway_rest_api" "api" {
+  name        = "fetch-api"
+  description = "API for invoking fetch data Lambda"
+}
+
+resource "aws_api_gateway_resource" "resource" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  parent_id   = aws_api_gateway_rest_api.api.root_resource_id
+  path_part    = "fetch"
+}
+
+resource "aws_api_gateway_method" "method" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.resource.id
+  http_method   = "GET"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "integration" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.resource.id
+  http_method = aws_api_gateway_method.method.http_method
+  integration_http_method = "POST"
+  type = "AWS_PROXY"
+  uri = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${aws_lambda_function.fetch_records.arn}/invocations"
+}
+
+resource "aws_api_gateway_deployment" "api_deployment" {
+  depends_on = [
+    aws_api_gateway_method.method,
+    aws_api_gateway_integration.integration
+  ]
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  stage_name  = "prod"
 }

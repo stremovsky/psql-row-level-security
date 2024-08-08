@@ -34,22 +34,23 @@ else
     echo "Using instance id $INSTANCE_ID to open connection to database"
 fi
 
-echo "Wait for insance to becove available"
+echo "Wait for instance to become available"
 aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+sleep 60
 
 echo "Start port forwarding to access remote RDS database"
+
 set -x
 
 aws ssm start-session --target $INSTANCE_ID \
   --document-name AWS-StartPortForwardingSessionToRemoteHost \
   --parameters host="$RDS",portNumber="5432",localPortNumber="5432" &
+pid=$!
 sleep 6
 
 echo "Creating database"
 psql 'postgresql://dbadmin:adminpassword@localhost:5432/tenantdb' -f setup-db.sql
-
-# aws_cognito_user_pool.user_pool.arn
+kill $pid
 
 echo "Terminating temp EC2 instance"
-aws ec2 terminate-instances --instance-ids $INSTANCE_ID
-
+#aws ec2 terminate-instances --instance-ids $INSTANCE_ID
