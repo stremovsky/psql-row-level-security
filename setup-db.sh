@@ -18,6 +18,7 @@ fi
 INSTANCE_ID=$(aws ec2 describe-instances \
     --region $REGION \
     --filters "Name=tag:Name,Values=$INSTANCE_NAME" \
+    "Name=instance-state-name,Values=pending,running,shutting-down,stopping,stopped" \
     --query "Reservations[*].Instances[*].InstanceId" \
     --output text)
 
@@ -37,16 +38,18 @@ echo "Wait for insance to becove available"
 aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
 echo "Start port forwarding to access remote RDS database"
+set -x
+
 aws ssm start-session --target $INSTANCE_ID \
   --document-name AWS-StartPortForwardingSessionToRemoteHost \
   --parameters host="$RDS",portNumber="5432",localPortNumber="5432" &
-sleep 10
+sleep 6
 
 echo "Creating database"
 psql 'postgresql://dbadmin:adminpassword@localhost:5432/tenantdb' -f setup-db.sql
 
 # aws_cognito_user_pool.user_pool.arn
 
-echo "Terminate temp EC2 instance"
+echo "Terminating temp EC2 instance"
 aws ec2 terminate-instances --instance-ids $INSTANCE_ID
 
