@@ -1,12 +1,16 @@
 # Terraform: PostgreSQL with row-level security, cognito and Lambda fucntion
 
-This project sets up the following:
+The terraform file sets up the following:
 
-1. An AWS PostgreSQL RDS instance.
-2. The database is automatically initialized with a custom SQL file that enables row-level security on a data table and loads sample data.
-3 A Cognito User Pool.
-4. Several user records in Cognito.
-5. A Lambda function that authenticates users via Cognito and retrieves records from the data table, enforcing tenant-based access control.
+1. An AWS PostgreSQL RDS instance
+2. A Cognito User Pool
+3. A lambda function to fetch records
+
+Bash scripts provided to:
+1. Create several user records in Cognito
+2. The database configuration file that enables row-level security on a data table and loads sample data
+
+3. A test function is provided that authenicates user agains AWS Cognito and calls the lambda function that returns data that belong to user tenant
 
 Setup postgresql
 ```
