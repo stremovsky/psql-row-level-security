@@ -14,3 +14,4 @@ CREATE POLICY tenant_policy ON data_table
     USING (tenant_id = current_setting('app.current_tenant')::int);
 
 CREATE ROLE rds_iam_user;
+GRANT rds_iam TO rds_iam_user;

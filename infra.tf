@@ -1,21 +1,3 @@
-resource "aws_db_instance" "postgres" {
-  identifier              = "postgresql-db"
-  engine                  = "postgres"
-  instance_class          = "db.t3.micro"
-  allocated_storage       = 10
-  db_name                 = "tenantdb"
-  username                = "dbadmin"
-  password                = "adminpassword"
-  skip_final_snapshot     = true
-  publicly_accessible     = false
-  apply_immediately       = true
-  iam_database_authentication_enabled = true
-}
-
-data "aws_db_subnet_group" "example" {
-  name = aws_db_instance.postgres.db_subnet_group_name
-}
-
 resource "aws_security_group" "postgres_sg" {
   name = "postgres-sg"
 
@@ -32,6 +14,25 @@ resource "aws_security_group" "postgres_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+resource "aws_db_instance" "postgres" {
+  identifier              = "postgresql-db"
+  engine                  = "postgres"
+  instance_class          = "db.t3.micro"
+  allocated_storage       = 10
+  db_name                 = "tenantdb"
+  username                = "dbadmin"
+  password                = "adminpassword"
+  skip_final_snapshot     = true
+  publicly_accessible     = false
+  apply_immediately       = true
+  iam_database_authentication_enabled = true
+  vpc_security_group_ids  = [aws_security_group.postgres_sg.id]
+}
+
+data "aws_db_subnet_group" "example" {
+  name = aws_db_instance.postgres.db_subnet_group_name
 }
 
 resource "aws_cognito_user_pool" "user_pool" {
@@ -55,6 +56,21 @@ resource "aws_iam_role" "lambda_role" {
       }
     }]
   })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_policy" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn  = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_vpc_policy" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn  = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_rds_access" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonRDSDataFullAccess"
 }
 
 resource "aws_iam_role_policy" "lambda_policy" {
