@@ -3,7 +3,6 @@ CREATE TABLE data_table (
     tenant_id INT,
     data TEXT
 );
-
 INSERT INTO data_table VALUES(DEFAULT, 1, 'secret value for tenant 1');
 INSERT INTO data_table VALUES(DEFAULT, 2, 'secret value for tenant 2');
 INSERT INTO data_table VALUES(DEFAULT, 3, 'secret value for tenant 3');

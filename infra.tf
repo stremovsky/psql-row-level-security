@@ -1,3 +1,24 @@
+# Generate a random password
+resource "random_password" "postgres_admin_password" {
+  length  = 16
+  special = true
+}
+
+# Create a Secrets Manager secret
+resource "aws_secretsmanager_secret" "postgres_admin_secret" {
+  name = "postgres_admin_password"
+}
+
+# Store the random password in the secret
+resource "aws_secretsmanager_secret_version" "postgres_admin_secret_version" {
+  secret_id = aws_secretsmanager_secret.postgres_admin_secret.id
+  secret_string = jsonencode({
+    username = "dbadmin"
+    password = random_password.postgres_admin_password.result
+  })
+}
+
+# Security Group for database access
 resource "aws_security_group" "postgres_sg" {
   name = "postgres-sg"
 
@@ -16,23 +37,77 @@ resource "aws_security_group" "postgres_sg" {
   }
 }
 
-resource "aws_db_instance" "postgres" {
-  identifier              = "postgresql-db"
-  engine                  = "postgres"
-  instance_class          = "db.t3.micro"
-  allocated_storage       = 10
-  db_name                 = "tenantdb"
-  username                = "dbadmin"
-  password                = "adminpassword"
-  skip_final_snapshot     = true
-  publicly_accessible     = false
-  apply_immediately       = true
+# Create database instance witout public IP
+resource "aws_rds_cluster" "postgres" {
+  cluster_identifier = "postgresql-cluster"
+  engine             = "aurora-postgresql"
+  #engine_version          = "13.6"
+  master_username        = "dbadmin"
+  master_password        = random_password.postgres_admin_password.result
+  database_name          = "tenantdb"
+  vpc_security_group_ids = [aws_security_group.postgres_sg.id]
+  skip_final_snapshot    = true
+
+  # Enable IAM Database Authentication
   iam_database_authentication_enabled = true
-  vpc_security_group_ids  = [aws_security_group.postgres_sg.id]
+
+  # Enable Data API
+  enable_http_endpoint = true
+
+  tags = {
+    Name = "postgresql-cluster"
+  }
+}
+
+resource "aws_rds_cluster_instance" "writer" {
+  count              = 1
+  identifier         = "aurora-pg-writer-${count.index}"
+  cluster_identifier = aws_rds_cluster.postgres.cluster_identifier
+  engine             = "aurora-postgresql"
+  instance_class     = "db.r5.large"
+
+  depends_on = [
+    aws_rds_cluster.postgres
+  ]
+}
+
+resource "aws_rds_cluster_instance" "readers" {
+  count              = 0
+  identifier         = "aurora-pg-reader-${count.index}"
+  cluster_identifier = aws_rds_cluster.postgres.cluster_identifier
+  engine             = "aurora-postgresql"
+  instance_class     = "db.r5.large"
+
+  depends_on = [
+    aws_rds_cluster.postgres
+  ]
 }
 
 data "aws_db_subnet_group" "example" {
-  name = aws_db_instance.postgres.db_subnet_group_name
+  name = aws_rds_cluster.postgres.db_subnet_group_name
+}
+
+resource "null_resource" "db_setup" {
+  depends_on = [
+    aws_rds_cluster_instance.writer
+  ]
+  triggers = {
+    file = filesha1("setup-db.sql")
+  }
+  provisioner "local-exec" {
+    command = <<-EOF
+      while read line; do
+        echo "$line"
+        aws rds-data execute-statement --resource-arn "$DB_ARN" --database  "$DB_NAME" --secret-arn "$SECRET_ARN" --sql "$line"
+      done  < <(awk 'BEGIN{RS=";\n"}{gsub(/\n/,""); if(NF>0) {print $0";"}}' setup-db.sql)
+      EOF
+    environment = {
+      DB_ARN     = aws_rds_cluster.postgres.arn
+      DB_NAME    = aws_rds_cluster.postgres.database_name
+      SECRET_ARN = aws_secretsmanager_secret.postgres_admin_secret.arn
+    }
+    interpreter = ["bash", "-c"]
+  }
 }
 
 resource "aws_cognito_user_pool" "user_pool" {
@@ -63,8 +138,8 @@ resource "aws_iam_role" "lambda_role" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Action    = "sts:AssumeRole"
-      Effect    = "Allow"
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
       Principal = {
         Service = "lambda.amazonaws.com"
       }
@@ -81,9 +156,9 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Action = [
           "rds-db:connect"
         ]
-        Effect   = "Allow"
+        Effect = "Allow"
         Resource = [
-          "arn:aws:rds-db:${var.region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.postgres.identifier}/rds_iam_user",
+          "arn:aws:rds-db:${var.region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_rds_cluster.postgres.cluster_resource_id}/rds_iam_user",
           "arn:aws:rds-db:*:*:dbuser:*/*"
         ]
       }
@@ -93,12 +168,12 @@ resource "aws_iam_role_policy" "lambda_policy" {
 
 resource "aws_iam_role_policy_attachment" "lambda_policy" {
   role       = aws_iam_role.lambda_role.name
-  policy_arn  = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_vpc_policy" {
   role       = aws_iam_role.lambda_role.name
-  policy_arn  = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_rds_access" {
@@ -131,15 +206,15 @@ resource "aws_lambda_function" "fetch_records" {
   timeout          = 10
   environment {
     variables = {
-      DB_HOST     = aws_db_instance.postgres.endpoint
-      DB_NAME     = aws_db_instance.postgres.db_name
-      DB_USER     = "rds_iam_user"
-      REGION      = var.region
+      DB_HOST = aws_rds_cluster.postgres.reader_endpoint
+      DB_NAME = aws_rds_cluster.postgres.database_name
+      DB_USER = "rds_iam_user"
+      REGION  = var.region
     }
   }
   vpc_config {
-    subnet_ids          = data.aws_db_subnet_group.example.subnet_ids
-    security_group_ids  = [aws_security_group.lambda_sg.id]
+    subnet_ids         = data.aws_db_subnet_group.example.subnet_ids
+    security_group_ids = [aws_security_group.lambda_sg.id]
   }
 }
 
@@ -152,8 +227,8 @@ resource "aws_lambda_permission" "allow_cognito_invoke" {
 }
 
 resource "aws_lambda_function_event_invoke_config" "invoke_config" {
-  function_name = aws_lambda_function.fetch_records.function_name
-  maximum_retry_attempts = 0
+  function_name                = aws_lambda_function.fetch_records.function_name
+  maximum_retry_attempts       = 0
   maximum_event_age_in_seconds = 60
 }
 
@@ -171,7 +246,7 @@ resource "aws_api_gateway_rest_api" "api" {
 resource "aws_api_gateway_resource" "resource" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   parent_id   = aws_api_gateway_rest_api.api.root_resource_id
-  path_part    = "fetch"
+  path_part   = "fetch"
 }
 
 resource "aws_api_gateway_method" "method" {
@@ -182,12 +257,12 @@ resource "aws_api_gateway_method" "method" {
 }
 
 resource "aws_api_gateway_integration" "integration" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.resource.id
-  http_method = aws_api_gateway_method.method.http_method
+  rest_api_id             = aws_api_gateway_rest_api.api.id
+  resource_id             = aws_api_gateway_resource.resource.id
+  http_method             = aws_api_gateway_method.method.http_method
   integration_http_method = "POST"
-  type = "AWS_PROXY"
-  uri = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${aws_lambda_function.fetch_records.arn}/invocations"
+  type                    = "AWS_PROXY"
+  uri                     = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${aws_lambda_function.fetch_records.arn}/invocations"
 }
 
 resource "aws_api_gateway_deployment" "api_deployment" {
