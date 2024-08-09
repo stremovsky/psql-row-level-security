@@ -31,12 +31,17 @@ def parse_jwt(token):
 
 def lambda_handler(event, context):
     db_host = remove_port(os.getenv('DB_HOST'))
-    tenant_id = 1
+    tenant_id = 0
     if 'headers' in event and event['headers'] is not None and 'Authorization' in event['headers']:
         token = event['headers']['Authorization']
         decoded_token = parse_jwt(token)
         tenant_id = decoded_token['custom:tenant_id']
 
+    if tenant_id == 0:
+        return {
+            'statusCode': 200,
+            'body': '{"error":"no tenant_id"}'
+        }
     client = boto3.client('rds')
     auth_token = client.generate_db_auth_token(
         DBHostname=db_host,
