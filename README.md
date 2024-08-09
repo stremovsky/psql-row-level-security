@@ -13,7 +13,8 @@ The attached Terraform files creates the following AWS resources:
 
 ### Database Setup
 
-During deployment, Terraform uses the ``setup-db.sql`` file to configure row-level access to the **data_table**.
+* During deployment, Terraform uses the ``setup-db.sql`` file to configure row-level access to the **data_table**.
+* The security group for database is configured to allow only from the default VPC CIDR.
 
 ## Cognito User Pool Setup
 

@@ -18,6 +18,10 @@ resource "aws_secretsmanager_secret_version" "postgres_admin_secret_version" {
   })
 }
 
+data "aws_vpc" "default" {
+  default = true
+}
+
 # Security Group for database access
 resource "aws_security_group" "postgres_sg" {
   name = "postgres-sg"
@@ -26,7 +30,7 @@ resource "aws_security_group" "postgres_sg" {
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [data.aws_vpc.default.cidr_block]
   }
 
   egress {
