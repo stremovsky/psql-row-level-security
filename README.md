@@ -11,7 +11,15 @@ The attached Terraform files creates the following AWS resources:
 - **Lambda Function**: Defines a Lambda function that interacts with the RDS cluster.
 - **API Gateway**: Configures API Gateway to invoke the Lambda function via HTTP GET requests.
 
-During deployment, Terraform is using ``setup-db.sql`` file to enable row-level access to **data_table**.
+### Database Setup
+
+During deployment, Terraform uses the ``setup-db.sql`` file to configure row-level access to the **data_table**.
+
+## Cognito User Pool Setup
+
+The Cognito service is configured with a custom user schema that includes the ``tenant_id`` field. Alternatively, this field can be stored directly in the database, which would require creating an additional table to manage user information.
+
+The ``create-users.sh`` script creates test users in Cognito with different tenant_id values. This script is used further in the Testing section below.
 
 ## Lambda Function Overview
 
@@ -19,7 +27,7 @@ The sample Lambda function, located in ``src/lambda_function.py``, performs the 
 1. Extracts the tenant_id from the user's Authorization HTTP header.
 2. Connects to the Aurora PostgreSQL database using IAM authentication method.
 3. Sets the database scope to the specific tenant_id with the command: cursor.execute("SET app.current_tenant TO %s", (tenant_id,)).
-4. Selects and returns all records from the data_table that belong to the tenant_id.
+4. Selects and returns all records from the ``data_table`` that belong to the ``tenant_id``.
 
 ## Prerequisites
 
@@ -27,13 +35,19 @@ The sample Lambda function, located in ``src/lambda_function.py``, performs the 
 2. Ensure you have AWS CLI installed and configured with appropriate access keys
 
 ## Deployment
+
 To deploy the resources, run the following commands:
 ```
+# Create a zip file with the Lambda code
+./prepare-files.sh
+
+# Initialize and apply Terraform configuration
 terraform init
 terraform apply
 ```
 
-## Testing everything
+## Testing
+
 The test scripts authenticate users against AWS Cognito and call the Lambda function to verify that it returns data specific to the user's tenant.
 
 1. Create test users in Cognito:
