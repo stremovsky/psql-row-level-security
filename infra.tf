@@ -1,21 +1,20 @@
 # Generate a random password
-resource "random_password" "postgres_admin_password" {
+resource "random_password" "postgres_dbadmin_password" {
   length  = 16
   special = true
-  override_special = "_%@"
 }
 
 # Create a Secrets Manager secret
-resource "aws_secretsmanager_secret" "postgres_admin_secret" {
-  name = "postgres_admin_password"
+resource "aws_secretsmanager_secret" "postgres_dbadmin_secret" {
+  name = "postgres_dbadmin_password"
 }
 
 # Store the random password in the secret
-resource "aws_secretsmanager_secret_version" "postgres_admin_secret_version" {
-  secret_id = aws_secretsmanager_secret.postgres_admin_secret.id
+resource "aws_secretsmanager_secret_version" "postgres_dbadmin_secret_version" {
+  secret_id = aws_secretsmanager_secret.postgres_dbadmin_secret.id
   secret_string = jsonencode({
     username = "dbadmin"
-    password = random_password.postgres_admin_password.result
+    password = random_password.postgres_dbadmin_password.result
   })
 }
 
@@ -48,17 +47,15 @@ resource "aws_rds_cluster" "postgres" {
   engine             = "aurora-postgresql"
   #engine_version          = "13.6"
   master_username        = "dbadmin"
-  master_password        = random_password.postgres_admin_password.result
+  master_password        = random_password.postgres_dbadmin_password.result
   database_name          = "tenantdb"
   vpc_security_group_ids = [aws_security_group.postgres_sg.id]
   skip_final_snapshot    = true
-
   # Enable IAM Database Authentication
   iam_database_authentication_enabled = true
-
   # Enable Data API
   enable_http_endpoint = true
-
+  depends_on           = [aws_secretsmanager_secret_version.postgres_dbadmin_secret_version]
   tags = {
     Name = "postgresql-cluster"
   }
@@ -70,9 +67,7 @@ resource "aws_rds_cluster_instance" "writer" {
   cluster_identifier = aws_rds_cluster.postgres.cluster_identifier
   engine             = "aurora-postgresql"
   instance_class     = "db.r5.large"
-  depends_on = [
-    aws_rds_cluster.postgres
-  ]
+  depends_on         = [aws_rds_cluster.postgres]
 }
 
 #resource "aws_rds_cluster_instance" "readers" {
@@ -113,7 +108,7 @@ resource "null_resource" "db_setup" {
     environment = {
       DB_ARN     = aws_rds_cluster.postgres.arn
       DB_NAME    = aws_rds_cluster.postgres.database_name
-      SECRET_ARN = aws_secretsmanager_secret.postgres_admin_secret.arn
+      SECRET_ARN = aws_secretsmanager_secret.postgres_dbadmin_secret.arn
     }
     interpreter = ["bash", "-c"]
   }
