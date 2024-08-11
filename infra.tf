@@ -69,32 +69,36 @@ resource "aws_rds_cluster_instance" "writer" {
   cluster_identifier = aws_rds_cluster.postgres.cluster_identifier
   engine             = "aurora-postgresql"
   instance_class     = "db.r5.large"
-
   depends_on = [
     aws_rds_cluster.postgres
   ]
 }
 
-resource "aws_rds_cluster_instance" "readers" {
-  count              = 0
-  identifier         = "aurora-pg-reader-${count.index}"
-  cluster_identifier = aws_rds_cluster.postgres.cluster_identifier
-  engine             = "aurora-postgresql"
-  instance_class     = "db.r5.large"
-
-  depends_on = [
-    aws_rds_cluster.postgres
-  ]
-}
+#resource "aws_rds_cluster_instance" "readers" {
+#  count              = 0
+#  identifier         = "aurora-pg-reader-${count.index}"
+#  cluster_identifier = aws_rds_cluster.postgres.cluster_identifier
+#  engine             = "aurora-postgresql"
+#  instance_class     = "db.r5.large"
+#  depends_on = [
+#    aws_rds_cluster.postgres
+#  ]
+#}
 
 data "aws_db_subnet_group" "example" {
   name = aws_rds_cluster.postgres.db_subnet_group_name
 }
 
+# Adding new step to wait for database to be fully available
+resource "null_resource" "wait_for_rds" {
+  depends_on = [aws_rds_cluster_instance.writer]
+  provisioner "local-exec" {
+    command = "aws rds wait db-instance-available --db-instance-identifier ${aws_rds_cluster_instance.writer.id} --region ${var.region}"
+  }
+}
+
 resource "null_resource" "db_setup" {
-  depends_on = [
-    aws_rds_cluster_instance.writer
-  ]
+  depends_on = [null_resource.wait_for_rds]
   triggers = {
     file = filesha1("setup-db.sql")
   }
