@@ -17,10 +17,6 @@ resource "aws_secretsmanager_secret_version" "postgres_admin_secret_version" {
     username = "dbadmin"
     password = random_password.postgres_admin_password.result
   })
-  lifecycle {
-    prevent_destroy = true
-    create_before_destroy = true
-  }
 }
 
 data "aws_vpc" "default" {
@@ -205,7 +201,7 @@ resource "aws_security_group" "lambda_sg" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [data.aws_vpc.default.cidr_block]
   }
 }
 
