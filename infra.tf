@@ -2,6 +2,7 @@
 resource "random_password" "postgres_admin_password" {
   length  = 16
   special = true
+  override_special = "_%@"
 }
 
 # Create a Secrets Manager secret
@@ -16,6 +17,10 @@ resource "aws_secretsmanager_secret_version" "postgres_admin_secret_version" {
     username = "dbadmin"
     password = random_password.postgres_admin_password.result
   })
+  lifecycle {
+    prevent_destroy = true
+    create_before_destroy = true
+  }
 }
 
 data "aws_vpc" "default" {
@@ -93,7 +98,7 @@ data "aws_db_subnet_group" "example" {
 resource "null_resource" "wait_for_rds" {
   depends_on = [aws_rds_cluster_instance.writer]
   provisioner "local-exec" {
-    command = "aws rds wait db-instance-available --db-instance-identifier ${aws_rds_cluster_instance.writer.id} --region ${var.region}"
+    command = "aws rds wait db-instance-available --db-instance-identifier ${aws_rds_cluster_instance.writer[0].id}"
   }
 }
 
@@ -166,7 +171,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
         ]
         Effect = "Allow"
         Resource = [
-          "arn:aws:rds-db:${var.region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_rds_cluster.postgres.cluster_resource_id}/rds_iam_user",
+          "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_rds_cluster.postgres.cluster_resource_id}/rds_iam_user",
           "arn:aws:rds-db:*:*:dbuser:*/*"
         ]
       }
@@ -217,7 +222,7 @@ resource "aws_lambda_function" "fetch_records" {
       DB_HOST = aws_rds_cluster.postgres.reader_endpoint
       DB_NAME = aws_rds_cluster.postgres.database_name
       DB_USER = "rds_iam_user"
-      REGION  = var.region
+      REGION  = data.aws_region.current.name
     }
   }
   vpc_config {

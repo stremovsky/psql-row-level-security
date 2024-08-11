@@ -42,6 +42,9 @@ To deploy the resources, run the following commands:
 # Create a zip file with the Lambda code
 ./prepare-files.sh
 
+# Export AWS region and profile
+export AWS_PROFILE='default'
+export AWS_REGION='us-east-1'
 # Initialize and apply Terraform configuration
 terraform init
 terraform apply
@@ -53,8 +56,8 @@ The test scripts authenticate users against AWS Cognito and call the Lambda func
 
 1. Create test users in Cognito:
 ```
-export AWS_DEFAULT_PROFILE='dev'
-export AWS_DEFAULT_REGION='us-east-1'
+export AWS_PROFILE='default'
+export AWS_REGION='us-east-1'
 ./create-users.sh
 ```
 
