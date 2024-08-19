@@ -11,6 +11,9 @@ The attached Terraform files creates the following AWS resources:
 - **Lambda Function**: Defines a Lambda function that interacts with the RDS cluster.
 - **API Gateway**: Configures API Gateway to invoke the Lambda function via HTTP GET requests.
 
+## Project Diagram
+![project diagram](aws_architecture.png)
+
 ### Database Setup
 
 * During deployment, Terraform uses the ``setup-db.sql`` file to configure row-level access to the **data_table**.
