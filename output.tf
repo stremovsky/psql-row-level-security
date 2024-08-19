@@ -23,5 +23,5 @@ output "db_name" {
 }
 
 output secret_arn {
-  value = aws_secretsmanager_secret.postgres_admin_secret.arn
+  value = aws_secretsmanager_secret.postgres_dbadmin_secret.arn
 }
